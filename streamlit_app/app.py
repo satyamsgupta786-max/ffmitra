@@ -135,6 +135,75 @@ def login(email: str, password: str) -> tuple[dict | None, str | None]:
         return None, f"Network error: {exc}"
 
 
+def _cell(v):
+    if isinstance(v, (list, dict)):
+        return "; ".join(str(x) for x in v)
+    return "" if v is None else str(v)
+
+
+def csv_download(rows: list[dict], fields: list[str]) -> str:
+    import csv
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(fields)
+    for r in rows:
+        w.writerow([_cell(r.get(f)) for f in fields])
+    return buf.getvalue()
+
+
+def admin_create_user(email: str, password: str) -> tuple[bool, str]:
+    """Create an analyst via the Supabase admin API (requires secret key)."""
+    import httpx
+
+    from app.config import get_settings
+
+    s = get_settings()
+    if not (s.supabase_url and s.supabase_secret_key):
+        return False, "Supabase URL / SECRET_KEY not configured."
+    headers = {"apikey": s.supabase_secret_key, "Authorization": f"Bearer {s.supabase_secret_key}"}
+    try:
+        resp = httpx.post(
+            f"{s.supabase_url.rstrip('/')}/auth/v1/admin/users",
+            headers=headers,
+            json={"email": email, "password": password, "email_confirm": True},
+            timeout=30.0,
+        )
+    except Exception as exc:
+        return False, f"Network error: {exc}"
+    if resp.status_code in (200, 201):
+        return True, "ok"
+    try:
+        detail = resp.json()
+    except Exception:
+        detail = {}
+    if resp.status_code == 422 and "already" in str(detail).lower():
+        return False, "A user with this email already exists."
+    return False, f"Admin API HTTP {resp.status_code}: {str(detail)[:200]}"
+
+
+def admin_list_users() -> tuple[list[dict], str | None]:
+    import httpx
+
+    from app.config import get_settings
+
+    s = get_settings()
+    if not (s.supabase_url and s.supabase_secret_key):
+        return [], "Supabase URL / SECRET_KEY not configured."
+    headers = {"apikey": s.supabase_secret_key, "Authorization": f"Bearer {s.supabase_secret_key}"}
+    try:
+        resp = httpx.get(
+            f"{s.supabase_url.rstrip('/')}/auth/v1/admin/users?per_page=100",
+            headers=headers,
+            timeout=30.0,
+        )
+    except Exception as exc:
+        return [], f"Network error: {exc}"
+    if resp.status_code != 200:
+        return [], f"Admin API HTTP {resp.status_code}: {resp.text[:200]}"
+    return resp.json().get("users", []), None
+
+
 # ---------------------------------------------------------------------------
 # auth state
 # ---------------------------------------------------------------------------
@@ -224,8 +293,8 @@ def page_analyst():
     st.title("🛡️ FFMitra Command Center")
     st.caption(f"Signed in as **{AUTH['email']}**")
 
-    tab_dash, tab_txns, tab_flag, tab_trail, tab_links = st.tabs(
-        ["Dashboard", "Transactions", "Flag Accounts", "Fund Trail", "Link Analyzer"]
+    tab_dash, tab_txns, tab_flag, tab_trail, tab_links, tab_admin = st.tabs(
+        ["Dashboard", "Transactions", "Flag Accounts", "Fund Trail", "Link Analyzer", "Admin"]
     )
 
     db = get_db()
@@ -268,6 +337,36 @@ def page_analyst():
 
         live_dashboard()
 
+        dl_recent = run(db.select("transactions", order="txn_time.desc", limit=200))
+        dl_blocked = [t for t in dl_recent if (t.get("risk_decision") or "APPROVE").upper() == "BLOCK"]
+        dl_review = [t for t in dl_recent if (t.get("risk_decision") or "APPROVE").upper() == "REVIEW"]
+        dl_fields = ["txn_ref", "txn_time", "source_ref", "dest_ref", "amount", "risk_score", "risk_decision", "risk_reasons"]
+        d1, d2, d3 = st.columns(3)
+        d1.download_button(
+            "⬇️ Summary report (CSV)",
+            data=csv_download(
+                [{"transactions": len(dl_recent), "volume": sum(float(t.get("amount") or 0) for t in dl_recent), "blocked": len(dl_blocked), "review": len(dl_review)}],
+                ["transactions", "volume", "blocked", "review"],
+            ),
+            file_name="ffmitra-summary.csv",
+            mime="text/csv",
+            key="dl_summary",
+        )
+        d2.download_button(
+            "⬇️ Blocked transactions (CSV)",
+            data=csv_download(dl_blocked, dl_fields),
+            file_name="ffmitra-blocked.csv",
+            mime="text/csv",
+            key="dl_blocked",
+        )
+        d3.download_button(
+            "⬇️ Review queue (CSV)",
+            data=csv_download(dl_review, dl_fields),
+            file_name="ffmitra-review-queue.csv",
+            mime="text/csv",
+            key="dl_review",
+        )
+
     with tab_txns:
         q = st.text_input("Search txn ref / account", key="txn_q")
         if q.strip():
@@ -296,6 +395,16 @@ def page_analyst():
                 use_container_width=True,
                 height=420,
             )
+            st.download_button(
+                "⬇️ Download all transactions (CSV)",
+                data=csv_download(
+                    rows,
+                    ["txn_ref", "txn_time", "source_ref", "dest_ref", "amount", "risk_score", "risk_decision", "risk_reasons"],
+                ),
+                file_name="ffmitra-transactions.csv",
+                mime="text/csv",
+                key="dl_txns",
+            )
 
     with tab_flag:
         st.markdown("Flagging an account adds it to the **watchlist** — the next transaction touching it is **auto-blocked at 99.9**.")
@@ -306,8 +415,16 @@ def page_analyst():
             st.success(f"Flagged **{row.get('account_ref')}** — active: {row.get('active')}")
         st.divider()
         st.subheader("Currently flagged")
-        for f in run(db.select("flagged_accounts", {"active": "true"}, limit=100)):
+        flagged_rows = run(db.select("flagged_accounts", {"active": "true"}, limit=100))
+        for f in flagged_rows:
             st.markdown(f"🚫 `{f.get('account_ref')}` — {f.get('reason')} · {fmt_time(f.get('created_at'))}")
+        st.download_button(
+            "⬇️ Download watchlist (CSV)",
+            data=csv_download(flagged_rows, ["account_ref", "reason", "severity", "source", "created_at"]),
+            file_name="ffmitra-flagged-accounts.csv",
+            mime="text/csv",
+            key="dl_flag",
+        )
 
     with tab_trail:
         from app.graph.fundtrail import build_fund_trail
@@ -356,6 +473,48 @@ def page_analyst():
                 "Do not open, share, or enter any details. Report to **1930** immediately."
                 if verdict == "HIGH"
                 else "Exercise caution — verify through the official app/website only."
+            )
+
+    with tab_admin:
+        st.markdown("#### 👮 Create analyst account")
+        st.caption(
+            "Anyone can be made an analyst — but you must confirm with the "
+            "**admin password** (the password of the account you signed in with). "
+            "New analysts sign in at the sidebar with the temporary password you set."
+        )
+        new_email = st.text_input("New analyst email", key="admin_new_email")
+        new_pw = st.text_input("Temporary password", type="password", key="admin_new_pw")
+        confirm_pw = st.text_input("Your admin password (authorization)", type="password", key="admin_confirm_pw")
+        if st.button("Create analyst", type="primary"):
+            if not new_email.strip() or not new_pw or not confirm_pw:
+                st.warning("Fill in all three fields.")
+            else:
+                auth2, err = login(AUTH["email"], confirm_pw)
+                if err:
+                    st.error(f"❌ Authorization failed — wrong admin password: {err}")
+                else:
+                    ok, msg = admin_create_user(new_email.strip(), new_pw)
+                    if ok:
+                        st.success(f"✅ Analyst **{new_email.strip()}** created — they can sign in with the temporary password.")
+                    else:
+                        st.error(f"❌ {msg}")
+        st.divider()
+        st.subheader("Current analysts")
+        users, err2 = admin_list_users()
+        if err2:
+            st.error(err2)
+        elif not users:
+            st.markdown("_No analysts found._")
+        else:
+            for u in users:
+                last = fmt_time(u.get("last_sign_in_at")) if u.get("last_sign_in_at") else "never"
+                st.markdown(f"- `{u.get('email')}` · created {fmt_time(u.get('created_at'))} · last seen {last}")
+            st.download_button(
+                "⬇️ Download analyst list (CSV)",
+                data=csv_download(users, ["email", "created_at", "last_sign_in_at"]),
+                file_name="ffmitra-analysts.csv",
+                mime="text/csv",
+                key="dl_analysts",
             )
 
 
