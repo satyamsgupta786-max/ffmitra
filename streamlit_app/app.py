@@ -54,6 +54,97 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+CYBER_CSS = """
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  .stApp {
+    background:
+      radial-gradient(ellipse at 15% 0%, rgba(0, 255, 156, 0.07), transparent 55%),
+      radial-gradient(ellipse at 85% 100%, rgba(56, 189, 248, 0.06), transparent 55%),
+      #0a0e14;
+  }
+
+  h1, h2, h3 { font-family: 'Orbitron', sans-serif !important; letter-spacing: 0.5px; }
+
+  .cyber-banner {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.05rem;
+    letter-spacing: 3px;
+    color: #00ff9c;
+    background: linear-gradient(90deg, rgba(0,255,156,0.12), rgba(0,255,156,0.02));
+    border: 1px solid rgba(0,255,156,0.35);
+    border-left: 4px solid #00ff9c;
+    border-radius: 6px;
+    padding: 10px 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 0 18px rgba(0,255,156,0.12);
+  }
+  .cyber-tag { color: #56d4ff; font-weight: 700; }
+  .cyber-dim  { color: #64748b; font-size: 0.8rem; letter-spacing: 2px; }
+
+  [data-testid="stMetric"] {
+    background: rgba(17, 24, 39, 0.75);
+    border: 1px solid rgba(0, 255, 156, 0.22);
+    border-radius: 10px;
+    padding: 14px 12px;
+    box-shadow: 0 0 14px rgba(0, 255, 156, 0.07);
+  }
+  [data-testid="stMetricValue"] {
+    font-family: 'JetBrains Mono', monospace;
+    color: #00ff9c !important;
+  }
+
+  .stTabs [data-baseweb="tab-list"] { border-bottom: 1px solid rgba(0, 255, 156, 0.3); }
+  .stTabs [data-baseweb="tab"] { font-family: 'JetBrains Mono', monospace; letter-spacing: 0.5px; }
+  .stTabs [aria-selected="true"] { color: #00ff9c !important; }
+
+  .stButton button, .stDownloadButton button {
+    font-family: 'JetBrains Mono', monospace;
+    border: 1px solid rgba(0, 255, 156, 0.4) !important;
+    border-radius: 6px !important;
+    transition: box-shadow 0.2s ease;
+  }
+  .stButton button:hover, .stDownloadButton button:hover {
+    box-shadow: 0 0 16px rgba(0, 255, 156, 0.45) !important;
+  }
+
+  [data-testid="stSidebar"] {
+    background: #0c1118;
+    border-right: 1px solid rgba(0, 255, 156, 0.15);
+  }
+
+  [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2 {
+    font-family: 'Orbitron', sans-serif !important;
+  }
+
+  .cyber-badge { font-family: 'JetBrains Mono', monospace; font-weight: 700; letter-spacing: 1px; }
+
+  /* subtle scanlines */
+  .stApp::after {
+    content: "";
+    position: fixed; inset: 0; pointer-events: none; z-index: 9999; opacity: 0.5;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,0.015) 0 1px, transparent 1px 3px);
+  }
+
+  .cyber-alert {
+    font-family: 'JetBrains Mono', monospace;
+    color: #ff4b4b;
+    animation: cyberpulse 1.6s infinite;
+  }
+  @keyframes cyberpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+</style>
+"""
+st.markdown(CYBER_CSS, unsafe_allow_html=True)
+
+
+def cyber_banner(text: str, tag: str = "SECURE GRID"):
+    st.markdown(
+        f'<div class="cyber-banner">🛡️ {text} <span class="cyber-tag">// {tag}</span>'
+        f'<div class="cyber-dim">FRAUD DEFENSE · RBI GUIDANCE · HELPLINE 1930</div></div>',
+        unsafe_allow_html=True,
+    )
+
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -98,11 +189,8 @@ def fmt_time(ts):
 
 def decision_badge(d):
     d = (d or "APPROVE").upper()
-    if d == "BLOCK":
-        return "🚫 **BLOCK**"
-    if d == "REVIEW":
-        return "⚠️ **REVIEW**"
-    return "✅ APPROVE"
+    color = {"BLOCK": "#ff4b4b", "REVIEW": "#f2a33c", "APPROVE": "#00ff9c"}.get(d, "#c8d3e0")
+    return f'<span class="cyber-badge" style="color:{color}">■ {d}</span>'
 
 
 def login(email: str, password: str) -> tuple[dict | None, str | None]:
@@ -204,6 +292,32 @@ def admin_list_users() -> tuple[list[dict], str | None]:
     return resp.json().get("users", []), None
 
 
+def admin_delete_user(email: str, users: list[dict]) -> tuple[bool, str]:
+    """Permanently remove an analyst via the Supabase admin API."""
+    import httpx
+
+    from app.config import get_settings
+
+    s = get_settings()
+    if not (s.supabase_url and s.supabase_secret_key):
+        return False, "Supabase URL / SECRET_KEY not configured."
+    target = next((u for u in users if u.get("email") == email), None)
+    if not target:
+        return False, "User not found."
+    headers = {"apikey": s.supabase_secret_key, "Authorization": f"Bearer {s.supabase_secret_key}"}
+    try:
+        resp = httpx.delete(
+            f"{s.supabase_url.rstrip('/')}/auth/v1/admin/users/{target['id']}",
+            headers=headers,
+            timeout=30.0,
+        )
+    except Exception as exc:
+        return False, f"Network error: {exc}"
+    if resp.status_code in (200, 204):
+        return True, "ok"
+    return False, f"Admin API HTTP {resp.status_code}: {resp.text[:200]}"
+
+
 # ---------------------------------------------------------------------------
 # auth state
 # ---------------------------------------------------------------------------
@@ -219,6 +333,7 @@ AUTH = st.session_state.auth
 # ---------------------------------------------------------------------------
 
 def page_victim():
+    cyber_banner("FFMITRA MITRA", "VICTIM ASSISTANT · ANONYMOUS")
     st.title("🛡️ FFMitra Mitra — Fraud Victim Assistant")
     st.caption(
         "**No login needed.** You are anonymous. Tell us what happened — in your "
@@ -290,6 +405,7 @@ def page_victim():
 # ---------------------------------------------------------------------------
 
 def page_analyst():
+    cyber_banner("FFMITRA COMMAND CENTER", "ANALYST ACCESS ONLY")
     st.title("🛡️ FFMitra Command Center")
     st.caption(f"Signed in as **{AUTH['email']}**")
 
@@ -332,7 +448,8 @@ def page_analyst():
                     st.markdown(
                         f"{decision_badge(t.get('risk_decision'))} {t.get('txn_ref')} · "
                         f"{fmt_inr(t.get('amount'))} · {t.get('source_ref')} → {t.get('dest_ref')} · "
-                        f"{fmt_time(t.get('txn_time'))}"
+                        f"{fmt_time(t.get('txn_time'))}",
+                        unsafe_allow_html=True,
                     )
 
         live_dashboard()
@@ -503,19 +620,50 @@ def page_analyst():
         users, err2 = admin_list_users()
         if err2:
             st.error(err2)
-        elif not users:
-            st.markdown("_No analysts found._")
         else:
             for u in users:
                 last = fmt_time(u.get("last_sign_in_at")) if u.get("last_sign_in_at") else "never"
                 st.markdown(f"- `{u.get('email')}` · created {fmt_time(u.get('created_at'))} · last seen {last}")
-            st.download_button(
-                "⬇️ Download analyst list (CSV)",
-                data=csv_download(users, ["email", "created_at", "last_sign_in_at"]),
-                file_name="ffmitra-analysts.csv",
-                mime="text/csv",
-                key="dl_analysts",
+        st.divider()
+        st.subheader("Remove analyst")
+        deletable = [u for u in users if u.get("email") != AUTH["email"]]
+        if not users:
+            st.markdown("_No analysts found._")
+        elif not deletable:
+            st.markdown("_Only your own account exists — you can't remove yourself._")
+        else:
+            victim_email = st.selectbox(
+                "Analyst to remove",
+                [u["email"] for u in deletable],
+                key="admin_remove_email",
             )
+            if victim_email == "admin@ffmitra.local":
+                st.warning(
+                    "⚠️ This is the **demo analyst** account (`admin@ffmitra.local` / `Analyst@2026`). "
+                    "Removing it means the published demo credentials stop working."
+                )
+            rm_confirm = st.checkbox("I understand this permanently removes the account", key="admin_remove_confirm")
+            rm_pw = st.text_input("Your admin password (to remove)", type="password", key="admin_remove_pw")
+            if st.button("🗑 Remove analyst", type="secondary"):
+                if not rm_confirm or not rm_pw:
+                    st.warning("Confirm the checkbox and enter your admin password.")
+                else:
+                    auth3, err3 = login(AUTH["email"], rm_pw)
+                    if err3:
+                        st.error(f"❌ Authorization failed — wrong admin password: {err3}")
+                    else:
+                        ok3, msg3 = admin_delete_user(victim_email, users)
+                        if ok3:
+                            st.success(f"🗑 Analyst **{victim_email}** removed.")
+                        else:
+                            st.error(f"❌ {msg3}")
+        st.download_button(
+            "⬇️ Download analyst list (CSV)",
+            data=csv_download(users, ["email", "created_at", "last_sign_in_at"]),
+            file_name="ffmitra-analysts.csv",
+            mime="text/csv",
+            key="dl_analysts",
+        )
 
 
 # ---------------------------------------------------------------------------

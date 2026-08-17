@@ -83,6 +83,24 @@ for exc in at.exception:
 print("created analyst success:", any("analyst" in s.value.lower() and "created" in s.value.lower() for s in at.success))
 print("analyst listed:", any(test_email in m.value for m in at.markdown))
 
+# remove the analyst via the UI (password-gated), then verify it's gone
+sel = next(s for s in at.selectbox if s.label == "Analyst to remove")
+sel.set_value(test_email)
+confirm_chk = next(c for c in at.checkbox if "permanently removes" in c.label)
+confirm_chk.check()
+rm_pw = next(t for t in at.text_input if t.label == "Your admin password (to remove)")
+rm_pw.set_value("Analyst@2026")
+rm_btn = [b for b in at.button if b.label == "🗑 Remove analyst"]
+assert rm_btn, "Remove analyst button not found"
+rm_btn[0].click().run()
+print("after remove exceptions:", len(at.exception))
+for exc in at.exception:
+    print("EXC:", exc.value)
+print("removed success:", any("removed" in s.value.lower() for s in at.success))
+list_lines = [m.value for m in at.markdown if m.value.startswith("- `")]
+print("removed from list:", not any(test_email in line for line in list_lines))
+print("remaining analysts:", [line for line in list_lines])
+
 # cleanup: delete the throwaway user via the admin API
 import sys as _sys
 
