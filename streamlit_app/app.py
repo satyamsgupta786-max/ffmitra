@@ -71,28 +71,34 @@ def decision_badge(d):
     return "✅ APPROVE"
 
 
-def login(email: str, password: str) -> dict | None:
+def login(email: str, password: str) -> tuple[dict | None, str | None]:
     import httpx
 
     from app.config import get_settings
 
     s = get_settings()
+    if not s.supabase_url:
+        return None, "Supabase URL is not configured — add secrets in Settings → Secrets."
     try:
         resp = httpx.post(
             f"{s.supabase_url.rstrip('/')}/auth/v1/token?grant_type=password",
             headers={
-                "apikey": s.supabase_publishable_key,
+                "apikey": s.supabase_publishable_key or s.supabase_secret_key,
                 "Content-Type": "application/json",
             },
             json={"email": email, "password": password},
             timeout=30.0,
         )
         if resp.status_code != 200:
-            return None
+            try:
+                detail = resp.json().get("error_description") or resp.json().get("msg")
+            except Exception:
+                detail = None
+            return None, detail or f"Supabase rejected login (HTTP {resp.status_code})"
         data = resp.json()
-        return {"token": data["access_token"], "email": data["user"]["email"]}
-    except Exception:
-        return None
+        return {"token": data["access_token"], "email": data["user"]["email"]}, None
+    except Exception as exc:
+        return None, f"Network error: {exc}"
 
 
 # ---------------------------------------------------------------------------
@@ -334,16 +340,28 @@ with st.sidebar:
 
     if AUTH is None:
         st.markdown("#### Analyst login")
+        st.caption("Demo: `admin@ffmitra.local` / `Analyst@2026`")
         email = st.text_input("Email", key="login_email")
         password = st.text_input("Password", type="password", key="login_pass")
         if st.button("Sign in", use_container_width=True):
-            auth = login(email, password)
+            auth, err = login(email, password)
             if auth:
                 st.session_state.auth = auth
                 st.rerun()
             else:
-                st.error("Invalid credentials")
-        st.caption("Demo: `admin@ffmitra.local` / `Analyst@2026`")
+                st.error(err or "Invalid credentials")
+        if "login_err" in st.session_state and st.session_state.login_err:
+            st.error(st.session_state.login_err)
+
+        st.divider()
+        st.markdown("##### System status")
+        from app.config import get_settings as _gs
+
+        _s = _gs()
+        st.markdown(
+            f"- Supabase URL: {'✅ set' if _s.supabase_url else '❌ **missing** — add secrets → Settings → Secrets → paste keys → Save → Rerun'}\n"
+            f"- Gemini key: {'✅ set' if _s.has_gemini else '❌ missing'}"
+        )
     else:
         st.markdown(f"👤 **{AUTH['email']}**")
         if st.button("Sign out", use_container_width=True):
