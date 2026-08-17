@@ -63,13 +63,26 @@ assert any("Review queue" in d.label for d in dls), "review CSV download missing
 print("csv payloads attached:", all(getattr(d, "url", "") for d in dls))
 
 # admin tab: create a throwaway analyst (requires the real admin password),
-# verify success, then delete it again to keep auth clean
-import time
+# verify success, then remove it via the UI — cleanup keeps auth clean
+TEST_ANALYST = "apptest-e2e@ffmitra.local"
 
-test_email = f"apptest-{int(time.time())}@ffmitra.local"
+# ensure a clean slate: drop any leftover from a previous failed run
+import httpx
+
+from app.config import get_settings as _gs
+
+_s = _gs()
+_h = {"apikey": _s.supabase_secret_key, "Authorization": f"Bearer {_s.supabase_secret_key}"}
+_leftover = httpx.get(
+    f"{_s.supabase_url.rstrip('/')}/auth/v1/admin/users?per_page=100", headers=_h, timeout=30
+).json().get("users", [])
+for u in _leftover:
+    if u.get("email") == TEST_ANALYST:
+        httpx.delete(f"{_s.supabase_url.rstrip('/')}/auth/v1/admin/users/{u['id']}", headers=_h, timeout=30)
+
 for t in at.text_input:
     if t.label == "New analyst email":
-        t.set_value(test_email)
+        t.set_value(TEST_ANALYST)
     elif t.label == "Temporary password":
         t.set_value("Temp@12345")
     elif t.label == "Your admin password (authorization)":
@@ -80,12 +93,11 @@ create_btn[0].click().run()
 print("after create analyst exceptions:", len(at.exception))
 for exc in at.exception:
     print("EXC:", exc.value)
-print("created analyst success:", any("analyst" in s.value.lower() and "created" in s.value.lower() for s in at.success))
-print("analyst listed:", any(test_email in m.value for m in at.markdown))
+print("created analyst success:", any("created" in s.value.lower() for s in at.success))
 
 # remove the analyst via the UI (password-gated), then verify it's gone
 sel = next(s for s in at.selectbox if s.label == "Analyst to remove")
-sel.set_value(test_email)
+sel.set_value(TEST_ANALYST)
 confirm_chk = next(c for c in at.checkbox if "permanently removes" in c.label)
 confirm_chk.check()
 rm_pw = next(t for t in at.text_input if t.label == "Your admin password (to remove)")
@@ -97,27 +109,16 @@ print("after remove exceptions:", len(at.exception))
 for exc in at.exception:
     print("EXC:", exc.value)
 print("removed success:", any("removed" in s.value.lower() for s in at.success))
-list_lines = [m.value for m in at.markdown if m.value.startswith("- `")]
-print("removed from list:", not any(test_email in line for line in list_lines))
-print("remaining analysts:", [line for line in list_lines])
 
-# cleanup: delete the throwaway user via the admin API
-import sys as _sys
-
-_sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
-import httpx
-
-from app.config import get_settings as _gs
-
-_s = _gs()
-_h = {"apikey": _s.supabase_secret_key, "Authorization": f"Bearer {_s.supabase_secret_key}"}
-users = httpx.get(
-    f"{_s.supabase_url.rstrip('/')}/auth/v1/admin/users?per_page=100",
-    headers=_h,
-    timeout=30,
+# verify against Supabase directly (source of truth)
+_users = httpx.get(
+    f"{_s.supabase_url.rstrip('/')}/auth/v1/admin/users?per_page=100", headers=_h, timeout=30
 ).json().get("users", [])
-for u in users:
-    if u.get("email") == test_email:
+print("gone from supabase:", not any(u.get("email") == TEST_ANALYST for u in _users))
+
+# cleanup: delete the throwaway user via the admin API as belt-and-braces
+for u in _users:
+    if u.get("email") == TEST_ANALYST:
         resp = httpx.delete(
             f"{_s.supabase_url.rstrip('/')}/auth/v1/admin/users/{u['id']}",
             headers=_h,

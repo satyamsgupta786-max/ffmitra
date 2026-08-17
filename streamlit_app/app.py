@@ -616,18 +616,12 @@ def page_analyst():
                     else:
                         st.error(f"❌ {msg}")
         st.divider()
-        st.subheader("Current analysts")
-        users, err2 = admin_list_users()
+        st.subheader("Remove analyst")
+        deletable_users, err2 = admin_list_users()
         if err2:
             st.error(err2)
-        else:
-            for u in users:
-                last = fmt_time(u.get("last_sign_in_at")) if u.get("last_sign_in_at") else "never"
-                st.markdown(f"- `{u.get('email')}` · created {fmt_time(u.get('created_at'))} · last seen {last}")
-        st.divider()
-        st.subheader("Remove analyst")
-        deletable = [u for u in users if u.get("email") != AUTH["email"]]
-        if not users:
+        deletable = [u for u in deletable_users if u.get("email") != AUTH["email"]]
+        if not deletable_users:
             st.markdown("_No analysts found._")
         elif not deletable:
             st.markdown("_Only your own account exists — you can't remove yourself._")
@@ -652,11 +646,22 @@ def page_analyst():
                     if err3:
                         st.error(f"❌ Authorization failed — wrong admin password: {err3}")
                     else:
-                        ok3, msg3 = admin_delete_user(victim_email, users)
+                        ok3, msg3 = admin_delete_user(victim_email, deletable_users)
                         if ok3:
                             st.success(f"🗑 Analyst **{victim_email}** removed.")
                         else:
                             st.error(f"❌ {msg3}")
+        st.divider()
+        st.subheader("Current analysts")
+        users, err2 = admin_list_users()
+        if err2:
+            st.error(err2)
+        elif not users:
+            st.markdown("_No analysts found._")
+        else:
+            for u in users:
+                last = fmt_time(u.get("last_sign_in_at")) if u.get("last_sign_in_at") else "never"
+                st.markdown(f"- `{u.get('email')}` · created {fmt_time(u.get('created_at'))} · last seen {last}")
         st.download_button(
             "⬇️ Download analyst list (CSV)",
             data=csv_download(users, ["email", "created_at", "last_sign_in_at"]),
