@@ -316,7 +316,7 @@ def page_analyst():
         depth = st.slider("Depth", 1, 3, 2)
         if st.button("Trace", type="primary") and seed.strip():
             with st.spinner("Building fund trail…"):
-                result = run(build_fund_trail(seed.strip(), depth=depth, db=db))
+                result = run(build_fund_trail(seed.strip(), depth=depth))
             nodes, edges = result["nodes"], result["edges"]
             st.markdown(
                 f"**{len(nodes)} accounts · {len(edges)} transfers · "

@@ -43,3 +43,13 @@ print("after analyze exceptions:", len(at.exception))
 for exc in at.exception:
     print("EXC:", exc.value)
 print("risk markdown:", any("Risk score" in m.value for m in at.markdown))
+
+# simulate a fund-trail trace (seed defaults to mule.vendor@paytm)
+trace = [b for b in at.button if b.label == "Trace"]
+assert trace, "Trace button not found"
+trace[0].click().run()
+print("after trace exceptions:", len(at.exception))
+for exc in at.exception:
+    print("EXC:", exc.value)
+print("trail markdown:", any("accounts" in m.value and "transfers" in m.value for m in at.markdown))
+print("graphviz charts:", len(at.get("graphviz_chart")))
