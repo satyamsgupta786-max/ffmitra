@@ -336,20 +336,16 @@ def page_analyst():
             st.graphviz_chart(dot, use_container_width=True)
 
     with tab_links:
-        from app.api.links import _score_sender, _score_url
+        from app.ml.link_scorer import combine_scores, score_sender, score_url
 
         url = st.text_input("Suspicious URL", key="link_url")
         sender = st.text_input("Sender (optional)", key="link_sender")
         if st.button("Analyze link", type="primary", disabled=not url.strip()):
-            url_score, url_reasons, level = _score_url(url.strip())
-            sender_score, sender_reasons = _score_sender(sender)
-            combined = min(
-                url_score * 0.8
-                + sender_score * 0.2
-                + (0.15 if sender and sender.strip() else 0.0),
-                1.0,
+            url_score, url_reasons, level = score_url(url.strip())
+            sender_score, sender_reasons = score_sender(sender)
+            combined, verdict = combine_scores(
+                url_score, sender_score, bool(sender and sender.strip())
             )
-            verdict = "HIGH" if combined >= 0.7 else "MEDIUM" if combined >= 0.4 else "LOW"
             st.markdown(
                 f"**Risk score:** {round(combined * 100, 1)} / 100 — "
                 f"**Level:** `{verdict}`"
