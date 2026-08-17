@@ -18,10 +18,27 @@ BACKEND_DIR = REPO_ROOT / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
 
 # --- secrets -> env (Streamlit Cloud has no .env; pydantic-settings reads env first) ---
+def _flatten_secrets(prefix: str, obj) -> None:
+    """Accept flat keys OR a [secrets] section — both work on Streamlit Cloud."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            _flatten_secrets(f"{prefix}.{k}" if prefix else k, v)
+    else:
+        key = prefix.upper().replace(".", "_")
+        if isinstance(obj, str) and key in (
+            "SUPABASE_URL",
+            "SUPABASE_PUBLISHABLE_KEY",
+            "SUPABASE_SECRET_KEY",
+            "GEMINI_API_KEY",
+            "GEMINI_MODEL",
+            "GEMINI_EMBEDDING_MODEL",
+            "GEMINI_BASE_URL",
+        ):
+            os.environ.setdefault(key, obj)
+
+
 try:
-    for key, value in st.secrets.items():
-        if isinstance(value, str):
-            os.environ.setdefault(key, value)
+    _flatten_secrets("", dict(st.secrets))
 except Exception:
     pass
 
