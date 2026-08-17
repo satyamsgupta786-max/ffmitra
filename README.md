@@ -4,6 +4,25 @@ KAVACH 2023 · PS-26 · Real-time fraud detection, fund-trail network graphs, ph
 
 **Stack:** FastAPI (Python) · React 18 + Vite + TypeScript · Tailwind · Supabase (Postgres + Auth + Realtime + pgvector) · XGBoost + IsolationForest + SHAP · Gemini LLM (RAG).
 
+## v2 — Public Victim Portal (Streamlit)
+
+New in v2:
+- **Public victim portal — no login needed** (victims are anonymous by design; analysts sign in to the command center).
+- **Voice victim assistant** — victims record their complaint; Gemini transcribes it and Mitra answers with the same RAG guidance (endpoint `/api/chat/voice` + mic button in React chat).
+
+```bash
+pip install -r streamlit_app/requirements.txt
+cp streamlit_app/.streamlit/secrets.example.toml streamlit_app/.streamlit/secrets.toml  # fill keys
+streamlit run streamlit_app/app.py   # http://localhost:8501
+```
+
+**Deploy to Streamlit Community Cloud (free):**
+1. Push this repo to GitHub.
+2. [share.streamlit.io](https://share.streamlit.io) → New app → pick the repo → main file `streamlit_app/app.py` → Deploy.
+3. App settings → Secrets → paste the keys from `.streamlit/secrets.example.toml`.
+
+The app embeds the FFMitra engine (ML scorer, RAG, Supabase, Gemini) directly — no separate backend needed on the cloud.
+
 ## Architecture
 
 ```
