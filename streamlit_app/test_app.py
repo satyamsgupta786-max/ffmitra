@@ -13,6 +13,18 @@ for exc in at.exception:
 print("titles:", [t.value for t in at.title])
 print("captions:", [c.value[:80] for c in at.caption][:3])
 
+# victim message E2E (public page — no login): send a question, expect a reply
+q_box = next(t for t in at.text_area if t.label == "Describe the incident")
+q_box.set_value("I shared my OTP on a call and money left my account just now. What should I do?")
+send_btn = [b for b in at.button if b.label == "Send message"]
+assert send_btn, "Send message button not found"
+send_btn[0].click().run()
+print("after victim message exceptions:", len(at.exception))
+for exc in at.exception:
+    print("EXC:", exc.value)
+print("victim reply present:", any(m.value.strip() for m in at.markdown if "Act fast" in m.value or "1930" in m.value))
+print("reply meta shown:", any("Category:" in m.value for m in at.markdown))
+
 # simulate analyst login flow (find buttons by label — victim page also has buttons)
 sign_in = [b for b in at.button if b.label == "Sign in"]
 assert sign_in, "Sign in button not found"

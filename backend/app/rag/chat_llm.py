@@ -173,7 +173,7 @@ def _call_gemini(user_message: str, history: list[dict], system_prompt: str) -> 
     }
 
     last_error: Exception | None = None
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             with httpx.Client(timeout=60.0) as client:
                 resp = client.post(url, headers=headers, json=payload)
@@ -192,12 +192,12 @@ def _call_gemini(user_message: str, history: list[dict], system_prompt: str) -> 
                 f"generateContent error {resp.status_code}: {resp.text[:300]}"
             )
             if resp.status_code in (429, 500, 502, 503, 504):
-                time.sleep(2)
+                time.sleep(3 * (attempt + 1))
                 continue
             raise last_error
         except httpx.HTTPError as exc:
             last_error = exc
-            time.sleep(2)
+            time.sleep(3 * (attempt + 1))
     raise RuntimeError(f"Gemini generateContent failed: {last_error}")
 
 
@@ -233,6 +233,47 @@ def _fallback_reply(user_message: str, category: str, urgency: str, docs: list[d
 
 
 # ---------------------------------------------------------------------------
+# Question-aware FAQ retrieval (embedding rank with keyword fallback)
+# ---------------------------------------------------------------------------
+
+def _keyword_rank(user_message: str, docs: list[dict], top_k: int = 4) -> list[dict]:
+    import re
+
+    qwords = set(re.findall(r"[a-z0-9]+", user_message.lower()))
+
+    def score(d: dict) -> int:
+        text = " ".join(
+            str(d.get(k, "")) for k in ("question", "answer", "keywords")
+        ).lower()
+        return len(qwords & set(re.findall(r"[a-z0-9]+", text)))
+
+    return sorted(docs, key=score, reverse=True)[:top_k]
+
+
+def _rank_docs(user_message: str, docs: list[dict], top_k: int = 4) -> list[dict]:
+    """Pick the most relevant FAQs for a message.
+
+    Tries embedding similarity first (needs 'embedding' on each doc);
+    falls back to keyword overlap when embeddings or the API are unavailable.
+    """
+    if not docs or len(docs) <= top_k:
+        return docs
+    embs = [d.get("embedding") for d in docs]
+    if all(embs):
+        try:
+            from .embeddings import embed_query, search_corpus
+
+            q_emb = embed_query(user_message)
+            if q_emb:
+                hits = search_corpus(q_emb, embs, docs, top_k=top_k)
+                if hits:
+                    return [d for _, d in hits]
+        except Exception:
+            pass
+    return _keyword_rank(user_message, docs, top_k=top_k)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -249,7 +290,7 @@ def generate_reply(
     missing or the call fails — never raises for network/API issues.
     """
     history = history or []
-    docs = docs or []
+    docs = _rank_docs(user_message, docs or [])
     category = category or classify_category(user_message)
     urgency = detect_urgency(user_message)
     sources = [d.get("question", "") for d in docs if d.get("question")]
@@ -436,6 +477,7 @@ def load_docs() -> tuple[list[dict], list[list[float]]]:
             "question": r.get("question", ""),
             "answer": r.get("answer", ""),
             "keywords": r.get("keywords", ""),
+            "embedding": r.get("embedding", []),
         }
         for r in rows
     ]

@@ -337,31 +337,13 @@ def admin_list_users() -> tuple[list[dict], str | None]:
     return resp.json().get("users", []), None
 
 
-def update_self_password(new_pw: str, access_token: str) -> tuple[bool, str]:
-    """Change the signed-in analyst's password using their session token."""
-    import httpx
+def update_self_password(email: str, new_pw: str) -> tuple[bool, str]:
+    """Change a user's password via the Supabase admin API.
 
-    from app.config import get_settings
-
-    s = get_settings()
-    if not s.supabase_url:
-        return False, "Supabase URL not configured."
-    headers = {
-        "apikey": s.supabase_publishable_key or s.supabase_secret_key,
-        "Authorization": f"Bearer {access_token}",
-    }
-    try:
-        resp = httpx.put(
-            f"{s.supabase_url.rstrip('/')}/auth/v1/user",
-            headers=headers,
-            json={"password": new_pw},
-            timeout=30.0,
-        )
-    except Exception as exc:
-        return False, f"Network error: {exc}"
-    if resp.status_code == 200:
-        return True, "ok"
-    return False, f"HTTP {resp.status_code}: {resp.text[:200]}"
+    Uses the secret key instead of the session JWT — session tokens expire
+    after ~1 hour, which made the old /auth/v1/user call fail with 401.
+    """
+    return admin_reset_password(email, new_pw)
 
 
 def admin_reset_password(email: str, new_pw: str) -> tuple[bool, str]:
@@ -766,7 +748,7 @@ def page_analyst():
                 if errx:
                     st.error(f"❌ Wrong current password: {errx}")
                 else:
-                    okx, msgx = update_self_password(new_pw1, authx["token"])
+                    okx, msgx = update_self_password(AUTH["email"], new_pw1)
                     if okx:
                         st.success("✅ Password updated.")
                     else:
@@ -802,10 +784,29 @@ def page_analyst():
         from app.config import get_settings as _gs2
 
         _s3 = _gs2()
+        import httpx as _hx
+
+        _gemini_status = "not configured"
+        if _s3.gemini_api_key:
+            try:
+                _gr = _hx.post(
+                    f"{_s3.gemini_base_url.rstrip('/')}/models/{_s3.gemini_model}:generateContent",
+                    headers={"X-goog-api-key": _s3.gemini_api_key, "Content-Type": "application/json"},
+                    json={"contents": [{"role": "user", "parts": [{"text": "ping"}]}], "generationConfig": {"maxOutputTokens": 3}},
+                    timeout=15.0,
+                )
+                if _gr.status_code == 200:
+                    _gemini_status = "✅ working"
+                elif _gr.status_code == 429:
+                    _gemini_status = "❌ **QUOTA EXCEEDED (HTTP 429)** — the Gemini API key has run out of free quota. Generate a new key at aistudio.google.com/apikey and replace GEMINI_API_KEY in Settings → Secrets."
+                else:
+                    _gemini_status = f"❌ HTTP {_gr.status_code}"
+            except Exception as _ge:
+                _gemini_status = f"network error: {str(_ge)[:60]}"
         st.markdown(
             f"- Supabase URL: {'✅ set' if _s3.supabase_url else '❌ missing'}\n"
             f"- Supabase SECRET_KEY: {'✅ set' if _s3.supabase_secret_key else '❌ missing'}\n"
-            f"- Gemini key: {'✅ set' if _s3.has_gemini else '❌ missing'}"
+            f"- Gemini key: {'✅ set' if _s3.gemini_api_key else '❌ missing'} · **{_gemini_status}**"
         )
         st.divider()
         st.subheader("Current analysts")
