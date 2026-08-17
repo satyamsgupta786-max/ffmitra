@@ -1,0 +1,12 @@
+.env
+.git
+.gitignore
+data/datasets/*
+backend/.venv/
+backend/.pytest_cache/
+backend/notebooks/
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+*.pyc
+*.log

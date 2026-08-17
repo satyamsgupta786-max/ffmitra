@@ -1,0 +1,161 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-950 text-slate-200 font-sans antialiased;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(0, 229, 255, 0.08), transparent),
+    radial-gradient(ellipse 60% 40% at 90% 10%, rgba(124, 92, 255, 0.06), transparent),
+    linear-gradient(rgba(0, 229, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 229, 255, 0.025) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 42px 42px, 42px 42px;
+  background-attachment: fixed;
+}
+
+/* ---------- scrollbars ---------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 229, 255, 0.25) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.2);
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- reusable component classes ---------- */
+@layer components {
+  .panel {
+    @apply relative rounded-xl border border-cyber-cyan/10 bg-ink-900/70 backdrop-blur-sm shadow-panel;
+  }
+  .panel-glow {
+    @apply border-cyber-cyan/25;
+  }
+  .glass {
+    @apply bg-ink-900/60 backdrop-blur-md;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-cyber-cyan/40 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-cyber-cyan/90 text-ink-950 hover:bg-cyber-cyan hover:shadow-glow;
+  }
+  .btn-ghost {
+    @apply btn border border-cyber-cyan/20 text-cyber-cyan hover:border-cyber-cyan/50 hover:bg-cyber-cyan/5;
+  }
+  .btn-danger {
+    @apply btn bg-cyber-red/15 text-cyber-red border border-cyber-red/30 hover:bg-cyber-red/25 hover:shadow-glow-red;
+  }
+  .btn-success {
+    @apply btn bg-cyber-green/15 text-cyber-green border border-cyber-green/30 hover:bg-cyber-green/25 hover:shadow-glow-green;
+  }
+  .input {
+    @apply w-full rounded-lg border border-cyber-cyan/15 bg-ink-850 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 transition-colors focus:border-cyber-cyan/50 focus:outline-none focus:ring-2 focus:ring-cyber-cyan/20;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-medium uppercase tracking-wider text-slate-400;
+  }
+  .terminal-line {
+    @apply font-mono text-[13px] leading-relaxed;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide;
+  }
+}
+
+/* ---------- terminal cursor ---------- */
+.cursor-blink::after {
+  content: "▊";
+  @apply ml-0.5 text-cyber-cyan animate-blink;
+}
+
+/* ---------- radar sweep ---------- */
+.radar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(0, 229, 255, 0.35) 40deg, transparent 90deg);
+  border-radius: 50%;
+  animation: radar-spin 4s linear infinite;
+}
+@keyframes radar-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- scanline overlay for panels ---------- */
+.scanline {
+  position: relative;
+  overflow: hidden;
+}
+.scanline::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 0%, rgba(0, 229, 255, 0.06) 48%, rgba(0, 229, 255, 0.14) 50%, transparent 52%);
+  animation: scan-move 3.5s linear infinite;
+  pointer-events: none;
+}
+@keyframes scan-move {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+/* ---------- glitch for fraud events ---------- */
+.glitch {
+  animation: glitch 0.35s steps(2, end) infinite;
+}
+@keyframes glitch {
+  0% {
+    transform: translate(0);
+    text-shadow: 2px 0 rgba(255, 59, 92, 0.8), -2px 0 rgba(0, 229, 255, 0.8);
+  }
+  50% {
+    transform: translate(-1px, 1px);
+    text-shadow: -2px 0 rgba(255, 59, 92, 0.8), 2px 0 rgba(0, 229, 255, 0.8);
+  }
+  100% {
+    transform: translate(0);
+    text-shadow: none;
+  }
+}
+
+/* ---------- grid fade for graph bg ---------- */
+.graph-grid {
+  background-image:
+    linear-gradient(rgba(0, 229, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 229, 255, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

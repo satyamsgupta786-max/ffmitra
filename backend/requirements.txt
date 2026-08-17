@@ -1,0 +1,18 @@
+# FFMitra backend - FastAPI + ML
+fastapi
+uvicorn[standard]
+httpx
+psycopg[binary]
+python-dotenv
+PyJWT
+pydantic
+pydantic-settings
+pandas
+numpy
+scikit-learn
+xgboost
+shap
+networkx
+python-multipart
+pytest
+pytest-asyncio

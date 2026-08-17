@@ -1,0 +1,11 @@
+streamlit>=1.40
+httpx
+python-dotenv
+pydantic
+pydantic-settings
+pandas
+numpy
+scikit-learn
+xgboost
+shap
+networkx

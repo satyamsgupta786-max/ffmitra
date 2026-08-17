@@ -1,0 +1,45 @@
+# Env / secrets
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Data (large / generated)
+data/models/*
+data/datasets/*
+data/artifacts/*
+!data/models/.gitkeep
+!data/datasets/.gitkeep
+!data/artifacts/.gitkeep
+# Trained artifacts ARE needed for deployment (streamlit cloud / docker)
+!data/models/fraud_xgb.joblib
+!data/models/isoforest.joblib
+!data/models/feature_metadata.json
+!data/artifacts/faq_docs.json
+
+# Streamlit secrets (never commit real keys)
+streamlit_app/.streamlit/secrets.toml
+.streamlit/secrets.toml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log

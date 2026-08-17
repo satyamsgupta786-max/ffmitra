@@ -1,0 +1,163 @@
+{
+  "features": [
+    "amount",
+    "hour",
+    "is_weekend",
+    "is_night",
+    "txn_count_1h",
+    "txn_count_24h",
+    "sum_amount_1h",
+    "sum_amount_24h",
+    "avg_amount_24h",
+    "amount_ratio",
+    "velocity_spike",
+    "new_device",
+    "new_location",
+    "round_amount",
+    "distance_km",
+    "account_age_days",
+    "counterparty_count_24h",
+    "amount_stdev_24h",
+    "frequency_ratio",
+    "first_txn_of_day",
+    "midnight_txn",
+    "is_cross_bank"
+  ],
+  "thresholds": {
+    "block": 0.9,
+    "review": 0.6
+  },
+  "trained_at": "2026-08-17T18:14:04.808387+00:00",
+  "metrics": {
+    "accuracy": 0.9941,
+    "precision": 0.8176,
+    "recall": 0.9632,
+    "f1": 0.8844,
+    "roc_auc": 0.9957,
+    "pr_auc": 0.9702,
+    "confusion_matrix": [
+      [
+        41536,
+        216
+      ],
+      [
+        37,
+        968
+      ]
+    ],
+    "n_train": 171028,
+    "n_test": 42757,
+    "used_card_dataset": true,
+    "data_source": "card+synthetic",
+    "feature_importance": [
+      {
+        "feature": "amount",
+        "importance": 0.360091
+      },
+      {
+        "feature": "new_location",
+        "importance": 0.196567
+      },
+      {
+        "feature": "new_device",
+        "importance": 0.090209
+      },
+      {
+        "feature": "midnight_txn",
+        "importance": 0.079975
+      },
+      {
+        "feature": "sum_amount_1h",
+        "importance": 0.063756
+      },
+      {
+        "feature": "is_night",
+        "importance": 0.0272
+      },
+      {
+        "feature": "account_age_days",
+        "importance": 0.025618
+      },
+      {
+        "feature": "counterparty_count_24h",
+        "importance": 0.019807
+      },
+      {
+        "feature": "txn_count_1h",
+        "importance": 0.015368
+      },
+      {
+        "feature": "hour",
+        "importance": 0.014183
+      },
+      {
+        "feature": "avg_amount_24h",
+        "importance": 0.013394
+      },
+      {
+        "feature": "amount_stdev_24h",
+        "importance": 0.013323
+      },
+      {
+        "feature": "velocity_spike",
+        "importance": 0.013199
+      },
+      {
+        "feature": "amount_ratio",
+        "importance": 0.012922
+      },
+      {
+        "feature": "txn_count_24h",
+        "importance": 0.012848
+      },
+      {
+        "feature": "frequency_ratio",
+        "importance": 0.01202
+      },
+      {
+        "feature": "sum_amount_24h",
+        "importance": 0.010794
+      },
+      {
+        "feature": "is_weekend",
+        "importance": 0.008915
+      },
+      {
+        "feature": "first_txn_of_day",
+        "importance": 0.005682
+      },
+      {
+        "feature": "round_amount",
+        "importance": 0.004099
+      },
+      {
+        "feature": "distance_km",
+        "importance": 2.9e-05
+      },
+      {
+        "feature": "is_cross_bank",
+        "importance": 0.0
+      }
+    ]
+  },
+  "config": {
+    "xgb": {
+      "n_estimators": 300,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "subsample": 0.9,
+      "colsample_bytree": 0.9,
+      "random_state": 42,
+      "eval_metric": "aucpr",
+      "n_jobs": -1,
+      "scale_pos_weight": 41.52312282446544
+    },
+    "isolation_forest": {
+      "n_estimators": 200,
+      "contamination": "auto",
+      "random_state": 42,
+      "n_jobs": -1
+    },
+    "reduced_estimators": false
+  }
+}
