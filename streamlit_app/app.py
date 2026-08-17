@@ -60,7 +60,24 @@ st.set_page_config(
 
 
 def run(coro):
-    return asyncio.run(coro)
+    """Run a coroutine in its own event loop.
+
+    The SupabaseDB client is bound to whichever loop created it, and each
+    asyncio.run() spins up a NEW loop — so we force a fresh client per call
+    and close it inside its own loop (otherwise: 'Event loop is closed').
+    """
+    db = get_db()
+    db._client = None
+
+    async def _go():
+        try:
+            return await coro
+        finally:
+            if db._client is not None and not db._client.is_closed:
+                await db._client.aclose()
+            db._client = None
+
+    return asyncio.run(_go())
 
 
 def fmt_inr(v):
