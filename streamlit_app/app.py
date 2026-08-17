@@ -49,7 +49,7 @@ from app.services.enforcement import flag_account, is_flagged
 
 st.set_page_config(
     page_title="FFMitra — AI Fraud Shield",
-    page_icon="🛡️",
+    page_icon="⌬",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -133,9 +133,44 @@ CYBER_CSS = """
     animation: cyberpulse 1.6s infinite;
   }
   @keyframes cyberpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+  .cyber-logo { display: flex; align-items: center; gap: 10px; margin: 2px 0 10px; }
+  .logo-hex { animation: hexglow 2.4s ease-in-out infinite; }
+  @keyframes hexglow {
+    0%, 100% { filter: drop-shadow(0 0 2px rgba(0, 255, 156, 0.4)); }
+    50% { filter: drop-shadow(0 0 10px rgba(0, 255, 156, 0.95)); }
+  }
+  .logo-title {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #00ff9c;
+    font-size: 1.05rem;
+    line-height: 1.1;
+  }
+  .logo-cursor { animation: blink 1s step-end infinite; color: #56d4ff; }
+  @keyframes blink { 50% { opacity: 0; } }
 </style>
 """
 st.markdown(CYBER_CSS, unsafe_allow_html=True)
+
+
+def cyber_logo():
+    st.markdown(
+        '<div class="cyber-logo">'
+        '<svg viewBox="0 0 64 64" width="50" height="50">'
+        '<defs><linearGradient id="fflg" x1="0" y1="0" x2="1" y2="1">'
+        '<stop offset="0%" stop-color="#00ff9c"/><stop offset="100%" stop-color="#56d4ff"/>'
+        '</linearGradient></defs>'
+        '<polygon class="logo-hex" points="32,4 57,18 57,46 32,60 7,46 7,18" fill="none" stroke="url(#fflg)" stroke-width="3"/>'
+        '<polygon points="32,9 52.5,20.5 52.5,43.5 32,55 11.5,43.5 11.5,20.5" fill="rgba(0,255,156,0.06)" stroke="rgba(0,255,156,0.35)" stroke-width="1"/>'
+        '<text x="32" y="41" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="24" font-weight="700" fill="#00ff9c">FF</text>'
+        '</svg>'
+        '<div><div class="logo-title">FFMITRA<span class="logo-cursor">▮</span></div>'
+        '<div class="cyber-dim" style="letter-spacing:2px;font-size:0.65rem">AI FRAUD SHIELD</div></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def cyber_banner(text: str, tag: str = "SECURE GRID"):
@@ -172,10 +207,18 @@ def run(coro):
 
 
 def fmt_inr(v):
+    """Compact Indian-currency formatting: 1.2K / 3.4M / 5.6Cr."""
     try:
-        return f"₹{float(v):,.0f}"
+        x = float(v)
     except (TypeError, ValueError):
         return "₹0"
+    if abs(x) >= 1e7:
+        return f"₹{x / 1e7:.2f}Cr"
+    if abs(x) >= 1e6:
+        return f"₹{x / 1e6:.2f}M"
+    if abs(x) >= 1e3:
+        return f"₹{x / 1e3:.1f}K"
+    return f"₹{x:,.0f}"
 
 
 def fmt_time(ts):
@@ -267,6 +310,8 @@ def admin_create_user(email: str, password: str) -> tuple[bool, str]:
         detail = {}
     if resp.status_code == 422 and "already" in str(detail).lower():
         return False, "A user with this email already exists."
+    if resp.status_code == 429:
+        return False, "Supabase rate limit hit (HTTP 429) — wait a few minutes, then retry."
     return False, f"Admin API HTTP {resp.status_code}: {str(detail)[:200]}"
 
 
@@ -290,6 +335,61 @@ def admin_list_users() -> tuple[list[dict], str | None]:
     if resp.status_code != 200:
         return [], f"Admin API HTTP {resp.status_code}: {resp.text[:200]}"
     return resp.json().get("users", []), None
+
+
+def update_self_password(new_pw: str, access_token: str) -> tuple[bool, str]:
+    """Change the signed-in analyst's password using their session token."""
+    import httpx
+
+    from app.config import get_settings
+
+    s = get_settings()
+    if not s.supabase_url:
+        return False, "Supabase URL not configured."
+    headers = {
+        "apikey": s.supabase_publishable_key or s.supabase_secret_key,
+        "Authorization": f"Bearer {access_token}",
+    }
+    try:
+        resp = httpx.put(
+            f"{s.supabase_url.rstrip('/')}/auth/v1/user",
+            headers=headers,
+            json={"password": new_pw},
+            timeout=30.0,
+        )
+    except Exception as exc:
+        return False, f"Network error: {exc}"
+    if resp.status_code == 200:
+        return True, "ok"
+    return False, f"HTTP {resp.status_code}: {resp.text[:200]}"
+
+
+def admin_reset_password(email: str, new_pw: str) -> tuple[bool, str]:
+    """Reset another analyst's password via the Supabase admin API."""
+    import httpx
+
+    from app.config import get_settings
+
+    s = get_settings()
+    if not (s.supabase_url and s.supabase_secret_key):
+        return False, "Supabase URL / SECRET_KEY not configured."
+    users, _ = admin_list_users()
+    target = next((u for u in users if u.get("email") == email), None)
+    if not target:
+        return False, "User not found."
+    headers = {"apikey": s.supabase_secret_key, "Authorization": f"Bearer {s.supabase_secret_key}"}
+    try:
+        resp = httpx.put(
+            f"{s.supabase_url.rstrip('/')}/auth/v1/admin/users/{target['id']}",
+            headers=headers,
+            json={"password": new_pw},
+            timeout=30.0,
+        )
+    except Exception as exc:
+        return False, f"Network error: {exc}"
+    if resp.status_code in (200, 201, 204):
+        return True, "ok"
+    return False, f"Admin API HTTP {resp.status_code}: {resp.text[:200]}"
 
 
 def admin_delete_user(email: str, users: list[dict]) -> tuple[bool, str]:
@@ -652,6 +752,62 @@ def page_analyst():
                         else:
                             st.error(f"❌ {msg3}")
         st.divider()
+        st.subheader("🔑 Change my password")
+        cur_pw = st.text_input("Current password", type="password", key="chg_cur_pw")
+        new_pw1 = st.text_input("New password", type="password", key="chg_new_pw")
+        new_pw2 = st.text_input("Repeat new password", type="password", key="chg_new_pw2")
+        if st.button("Update my password", type="secondary"):
+            if not cur_pw or not new_pw1 or not new_pw2:
+                st.warning("Fill all three fields.")
+            elif new_pw1 != new_pw2:
+                st.warning("New passwords do not match.")
+            else:
+                authx, errx = login(AUTH["email"], cur_pw)
+                if errx:
+                    st.error(f"❌ Wrong current password: {errx}")
+                else:
+                    okx, msgx = update_self_password(new_pw1, authx["token"])
+                    if okx:
+                        st.success("✅ Password updated.")
+                    else:
+                        st.error(f"❌ {msgx}")
+        st.divider()
+        st.subheader("🔑 Reset analyst password")
+        all_users, err4 = admin_list_users()
+        if err4:
+            st.error(err4)
+        elif all_users:
+            reset_email = st.selectbox(
+                "Analyst to reset",
+                [u["email"] for u in all_users],
+                key="admin_reset_email",
+            )
+            reset_pw = st.text_input("New temporary password", type="password", key="admin_reset_pw")
+            reset_admin_pw = st.text_input("Your admin password (to reset)", type="password", key="admin_reset_admin_pw")
+            if st.button("Reset password", type="secondary"):
+                if not reset_pw or not reset_admin_pw:
+                    st.warning("Fill both password fields.")
+                else:
+                    authx2, errx2 = login(AUTH["email"], reset_admin_pw)
+                    if errx2:
+                        st.error(f"❌ Authorization failed — wrong admin password: {errx2}")
+                    else:
+                        okx2, msgx2 = admin_reset_password(reset_email, reset_pw)
+                        if okx2:
+                            st.success(f"✅ Password reset for **{reset_email}**.")
+                        else:
+                            st.error(f"❌ {msgx2}")
+        st.divider()
+        st.subheader("🖥️ System health")
+        from app.config import get_settings as _gs2
+
+        _s3 = _gs2()
+        st.markdown(
+            f"- Supabase URL: {'✅ set' if _s3.supabase_url else '❌ missing'}\n"
+            f"- Supabase SECRET_KEY: {'✅ set' if _s3.supabase_secret_key else '❌ missing'}\n"
+            f"- Gemini key: {'✅ set' if _s3.has_gemini else '❌ missing'}"
+        )
+        st.divider()
         st.subheader("Current analysts")
         users, err2 = admin_list_users()
         if err2:
@@ -676,9 +832,7 @@ def page_analyst():
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.image(str(REPO_ROOT / "frontend" / "public" / "favicon.svg"), width=56)
-    st.markdown("### FFMitra")
-    st.caption("AI Financial Fraud Detection & Prevention · v2")
+    cyber_logo()
 
     if AUTH is None:
         st.markdown("#### Analyst login")
@@ -692,18 +846,6 @@ with st.sidebar:
                 st.rerun()
             else:
                 st.error(err or "Invalid credentials")
-        if "login_err" in st.session_state and st.session_state.login_err:
-            st.error(st.session_state.login_err)
-
-        st.divider()
-        st.markdown("##### System status")
-        from app.config import get_settings as _gs
-
-        _s = _gs()
-        st.markdown(
-            f"- Supabase URL: {'✅ set' if _s.supabase_url else '❌ **missing** — add secrets → Settings → Secrets → paste keys → Save → Rerun'}\n"
-            f"- Gemini key: {'✅ set' if _s.has_gemini else '❌ missing'}"
-        )
     else:
         st.markdown(f"👤 **{AUTH['email']}**")
         if st.button("Sign out", use_container_width=True):

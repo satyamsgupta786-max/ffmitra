@@ -95,6 +95,29 @@ for exc in at.exception:
     print("EXC:", exc.value)
 print("created analyst success:", any("created" in s.value.lower() for s in at.success))
 
+# reset the throwaway analyst's password via the UI, then verify login works
+reset_sel = next(x for x in at.selectbox if x.label == "Analyst to reset")
+reset_sel.set_value(TEST_ANALYST)
+next(x for x in at.text_input if x.label == "New temporary password").set_value("Temp@67890")
+next(x for x in at.text_input if x.label == "Your admin password (to reset)").set_value("Analyst@2026")
+[x for x in at.button if x.label == "Reset password"][0].click().run()
+print("after reset exceptions:", len(at.exception))
+print("reset success:", any("reset" in s.value.lower() for s in at.success))
+
+# verify the new password actually signs in (Supabase is the source of truth)
+from app import db as _db  # noqa: F401  (ensure backend on path)
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+import httpx as _httpx
+
+_resp = _httpx.post(
+    f"{_s.supabase_url.rstrip('/')}/auth/v1/token?grant_type=password",
+    headers={"apikey": _s.supabase_publishable_key or _s.supabase_secret_key, "Content-Type": "application/json"},
+    json={"email": TEST_ANALYST, "password": "Temp@67890"},
+    timeout=30,
+)
+print("new password login status:", _resp.status_code)
+
 # remove the analyst via the UI (password-gated), then verify it's gone
 sel = next(s for s in at.selectbox if s.label == "Analyst to remove")
 sel.set_value(TEST_ANALYST)
