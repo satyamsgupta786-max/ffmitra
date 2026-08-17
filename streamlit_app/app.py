@@ -175,7 +175,7 @@ def cyber_logo():
 
 def cyber_banner(text: str, tag: str = "SECURE GRID"):
     st.markdown(
-        f'<div class="cyber-banner">🛡️ {text} <span class="cyber-tag">// {tag}</span>'
+        f'<div class="cyber-banner">⌬ {text} <span class="cyber-tag">// {tag}</span>'
         f'<div class="cyber-dim">FRAUD DEFENSE · RBI GUIDANCE · HELPLINE 1930</div></div>',
         unsafe_allow_html=True,
     )
@@ -434,7 +434,7 @@ AUTH = st.session_state.auth
 
 def page_victim():
     cyber_banner("FFMITRA MITRA", "VICTIM ASSISTANT · ANONYMOUS")
-    st.title("🛡️ FFMitra Mitra — Fraud Victim Assistant")
+    st.title("⌬ FFMitra Mitra — Fraud Victim Assistant")
     st.caption(
         "**No login needed.** You are anonymous. Tell us what happened — in your "
         "own words or with your voice — and Mitra guides you, grounded in RBI / "
@@ -506,7 +506,7 @@ def page_victim():
 
 def page_analyst():
     cyber_banner("FFMITRA COMMAND CENTER", "ANALYST ACCESS ONLY")
-    st.title("🛡️ FFMitra Command Center")
+    st.title("⌬ FFMitra Command Center")
     st.caption(f"Signed in as **{AUTH['email']}**")
 
     tab_dash, tab_txns, tab_flag, tab_trail, tab_links, tab_admin = st.tabs(
@@ -854,10 +854,10 @@ with st.sidebar:
 
     page = st.radio(
         "Navigate",
-        ["🛡️ Victim Assistant (public)", "🕵️ Command Center (analyst)"],
+        ["⌬ Victim Assistant (public)", "🕵️ Command Center (analyst)"],
     )
 
-if page.startswith("🛡️"):
+if page.startswith("⌬"):
     page_victim()
 else:
     if AUTH is None:
