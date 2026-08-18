@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, MessageCircleHeart, PhoneCall, ShieldCheck, Siren, ArrowRight, Mic, Square } from "lucide-react";
 import { api } from "@/lib/api";
-
 const QUICK_ACTIONS = [
   "I lost money in a UPI scam, what do I do?",
   "Someone called pretending to be police (digital arrest)",
@@ -22,9 +21,16 @@ export function VictimChat() {
   const [thinking, setThinking] = useState(false);
   const [lastMeta, setLastMeta] = useState<any>(null);
   const [recording, setRecording] = useState(false);
+  const [recSeconds, setRecSeconds] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  useEffect(() => {
+    if (!recording) return;
+    const id = setInterval(() => setRecSeconds((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [recording]);
 
   useEffect(() => {
     api.post<any>("/chat/session", {}).then((d) => setSessionRef(d.session_ref)).catch(() => {});
@@ -89,6 +95,7 @@ export function VictimChat() {
       mediaRef.current = rec;
       rec.start();
       setRecording(true);
+      setRecSeconds(0);
     } catch {
       setMessages((m) => [...m, { role: "assistant", content: "Microphone unavailable in this browser. Please type your message instead." }]);
     }
@@ -168,13 +175,25 @@ export function VictimChat() {
                   Tell me what happened and I'll guide you step-by-step: what to do right now, how to report, what evidence to save.
                 </p>
               </div>
-              <div className="grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
+              <motion.div
+                initial="hidden"
+                animate="show"
+                variants={{ hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.2 } } }}
+                className="grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2"
+              >
                 {QUICK_ACTIONS.map((q) => (
-                  <button key={q} className="rounded-lg border border-cyber-cyan/15 bg-ink-850 px-3 py-2.5 text-left text-xs text-slate-300 transition-all hover:border-cyber-cyan/40 hover:text-cyber-cyan" onClick={() => send(q)}>
+                  <motion.button
+                    key={q}
+                    variants={{ hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } } }}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.97 }}
+                    className="rounded-lg border border-cyber-cyan/15 bg-ink-850 px-3 py-2.5 text-left text-xs text-slate-300 transition-colors hover:border-cyber-cyan/40 hover:text-cyber-cyan"
+                    onClick={() => send(q)}
+                  >
                     {q}
-                  </button>
+                  </motion.button>
                 ))}
-              </div>
+              </motion.div>
             </div>
           )}
 
@@ -227,19 +246,81 @@ export function VictimChat() {
         )}
 
         <div className="border-t border-cyber-cyan/10 p-4">
-          <div className="flex gap-2">
-            <button
-              className={`shrink-0 rounded-lg border px-3 py-2 transition-all ${
+          <div className="flex items-center gap-2">
+            <motion.button
+              className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-all duration-300 ${
                 recording
-                  ? "border-cyber-red bg-cyber-red/15 text-cyber-red"
-                  : "border-cyber-cyan/25 bg-ink-850 text-cyber-cyan hover:border-cyber-cyan/50"
+                  ? "border-cyber-red/70 bg-cyber-red/15 text-cyber-red"
+                  : busy
+                    ? "border-cyber-cyan/15 bg-ink-850 text-slate-600"
+                    : "border-cyber-cyan/25 bg-ink-850 text-cyber-cyan hover:border-cyber-cyan/60 hover:bg-cyber-cyan/5"
               }`}
               onClick={toggleMic}
               disabled={busy}
+              whileTap={{ scale: 0.88 }}
               title={recording ? "Stop and send voice note" : "Record voice note"}
+              aria-label={recording ? "Stop recording" : "Record voice note"}
             >
-              {recording ? <Square className="h-4 w-4 animate-pulse" /> : <Mic className="h-4 w-4" />}
-            </button>
+              {recording && (
+                <>
+                  <motion.span
+                    className="absolute inset-0 rounded-xl border border-cyber-red/60"
+                    initial={{ scale: 1, opacity: 0.9 }}
+                    animate={{ scale: 1.55, opacity: 0 }}
+                    transition={{ duration: 1.3, repeat: Infinity, ease: "easeOut" }}
+                  />
+                  <motion.span
+                    className="absolute inset-0 rounded-xl border border-cyber-red/40"
+                    initial={{ scale: 1, opacity: 0.9 }}
+                    animate={{ scale: 1.55, opacity: 0 }}
+                    transition={{ duration: 1.3, repeat: Infinity, ease: "easeOut", delay: 0.45 }}
+                  />
+                </>
+              )}
+              {recording ? (
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 3, repeat: Infinity, ease: "linear" }}>
+                  <Square className="h-4 w-4" />
+                </motion.div>
+              ) : busy ? (
+                <motion.span
+                  className="h-4 w-4 rounded-full border-2 border-slate-600 border-t-cyber-cyan"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
+                />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
+            </motion.button>
+
+            <AnimatePresence>
+              {recording && (
+                <motion.div
+                  initial={{ opacity: 0, x: -10, scale: 0.95 }}
+                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                  exit={{ opacity: 0, x: -10, scale: 0.95 }}
+                  transition={{ duration: 0.25, ease: "easeOut" }}
+                  className="flex items-center gap-3 rounded-lg border border-cyber-red/30 bg-cyber-red/10 px-3 py-2"
+                >
+                  <div className="flex h-5 items-end gap-[3px]">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <motion.span
+                        key={i}
+                        className="w-[3px] rounded-full bg-cyber-red"
+                        animate={{ height: [5, 18, 8, 20, 5][i % 5] }}
+                        transition={{ duration: 0.7, repeat: Infinity, repeatType: "mirror", delay: i * 0.09, ease: "easeInOut" }}
+                      />
+                    ))}
+                  </div>
+                  <span className="font-mono text-xs font-semibold tabular-nums text-cyber-red">
+                    REC {String(Math.floor(recSeconds / 60)).padStart(2, "0")}:{String(recSeconds % 60).padStart(2, "0")}
+                  </span>
+                  <span className="hidden font-mono text-[10px] uppercase tracking-widest text-cyber-red/70 sm:inline">
+                    tap stop to send
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <input
               className="input"
               placeholder="Describe what happened… (e.g. UPI scam, fake call, trading app)"
@@ -247,12 +328,17 @@ export function VictimChat() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && send()}
             />
-            <button className="btn-primary shrink-0" onClick={() => send()} disabled={busy || !input.trim()}>
+            <motion.button
+              className="btn-primary h-11 shrink-0"
+              onClick={() => send()}
+              disabled={busy || !input.trim()}
+              whileTap={{ scale: 0.96 }}
+            >
               <Send className="h-4 w-4" /> Send
-            </button>
+            </motion.button>
           </div>
           <div className="mt-2 flex items-center justify-between font-mono text-[10px] text-slate-600">
-            <span>{recording ? "Recording… tap stop to send your voice note." : "Never share OTPs, PINs or passwords — not even with this assistant."}</span>
+            <span>{recording ? "Recording… tap the red button to stop and send your voice note." : "Never share OTPs, PINs or passwords — not even with this assistant."}</span>
             <a href="tel:1930" className="flex items-center gap-1 text-cyber-green hover:underline">
               <PhoneCall className="h-3 w-3" /> 1930 helpline
             </a>

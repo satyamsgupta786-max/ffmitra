@@ -283,6 +283,28 @@ def csv_download(rows: list[dict], fields: list[str]) -> str:
     return buf.getvalue()
 
 
+def md_light(text: str) -> str:
+    """Minimal markdown → HTML for the chat reply card (bold/code/bullets)."""
+    import html
+    import re
+
+    esc = html.escape(text)
+    esc = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", esc)
+    esc = re.sub(r"`([^`]+)`", r"<code>\1</code>", esc)
+    out = []
+    for ln in esc.split("\n"):
+        ln = ln.strip()
+        if not ln:
+            continue
+        if ln.startswith("- "):
+            out.append(f'<div style="padding-left:8px;margin:3px 0">• {ln[2:]}</div>')
+        elif re.match(r"^\d+\.\s", ln):
+            out.append(f'<div style="padding-left:8px;margin:3px 0">{ln}</div>')
+        else:
+            out.append(f"<div style='margin:4px 0'>{ln}</div>")
+    return "".join(out)
+
+
 def admin_create_user(email: str, password: str) -> tuple[bool, str]:
     """Create an analyst via the Supabase admin API (requires secret key)."""
     import httpx
@@ -452,12 +474,21 @@ def page_victim():
         if reply:
             cat = reply.get("category", "General")
             urg = reply.get("urgency", "LOW")
-            st.markdown("---")
+            st.markdown(
+                "<style>"
+                ".mitra-card{border:1px solid rgba(0,255,156,.22);border-radius:12px;"
+                "background:rgba(17,24,39,.6);padding:14px 16px;margin-top:8px;"
+                "box-shadow:0 0 18px rgba(0,255,156,.08);"
+                "animation:mitraIn .45s ease both}"
+                "@keyframes mitraIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}"
+                "</style>",
+                unsafe_allow_html=True,
+            )
             st.markdown(
                 f"**Category:** `{cat}` &nbsp;·&nbsp; **Urgency:** "
                 f"`{urg}` &nbsp;·&nbsp; `{'✨ AI' if reply.get('used_llm') else '⚙️ Guideline'}`"
             )
-            st.markdown(reply.get("reply", ""))
+            st.markdown(f'<div class="mitra-card">{md_light(reply.get("reply", ""))}</div>', unsafe_allow_html=True)
             if reply.get("urgency") == "CRITICAL":
                 st.error("🚨 **Act fast** — call **1930** now and block the transaction with your bank.")
 
