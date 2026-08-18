@@ -173,7 +173,8 @@ def _call_gemini(user_message: str, history: list[dict], system_prompt: str) -> 
     }
 
     last_error: Exception | None = None
-    for attempt in range(3):
+    attempts = 2 if _gemini_quota_exhausted() else 3
+    for attempt in range(attempts):
         try:
             with httpx.Client(timeout=60.0) as client:
                 resp = client.post(url, headers=headers, json=payload)
@@ -191,14 +192,37 @@ def _call_gemini(user_message: str, history: list[dict], system_prompt: str) -> 
             last_error = RuntimeError(
                 f"generateContent error {resp.status_code}: {resp.text[:300]}"
             )
-            if resp.status_code in (429, 500, 502, 503, 504):
+            if resp.status_code in (500, 502, 503, 504):
                 time.sleep(3 * (attempt + 1))
                 continue
+            if resp.status_code == 429:
+                _mark_quota_exhausted()
+                if attempt == 0:
+                    time.sleep(2)
+                    continue
             raise last_error
         except httpx.HTTPError as exc:
             last_error = exc
-            time.sleep(3 * (attempt + 1))
+            time.sleep(2 * (attempt + 1))
     raise RuntimeError(f"Gemini generateContent failed: {last_error}")
+
+
+_QUOTA_STATE = {"hits": 0, "since": 0.0}
+
+
+def _gemini_quota_exhausted() -> bool:
+    if time.time() - _QUOTA_STATE["since"] > 300:
+        _QUOTA_STATE["hits"] = 0
+        return False
+    return _QUOTA_STATE["hits"] >= 2
+
+
+def _mark_quota_exhausted() -> None:
+    now = time.time()
+    if now - _QUOTA_STATE["since"] > 300:
+        _QUOTA_STATE["hits"] = 0
+        _QUOTA_STATE["since"] = now
+    _QUOTA_STATE["hits"] += 1
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +283,7 @@ def _rank_docs(user_message: str, docs: list[dict], top_k: int = 4) -> list[dict
     if not docs or len(docs) <= top_k:
         return docs
     embs = [d.get("embedding") for d in docs]
-    if all(embs):
+    if all(embs) and not _gemini_quota_exhausted():
         try:
             from .embeddings import embed_query, search_corpus
 
@@ -312,7 +336,10 @@ def generate_reply(
     system_prompt = _build_system_prompt(context, urgency)
 
     try:
-        reply = _call_gemini(user_message, history, system_prompt)
+        if not _gemini_quota_exhausted():
+            reply = _call_gemini(user_message, history, system_prompt)
+        else:
+            reply = ""
     except Exception:
         reply = ""
 

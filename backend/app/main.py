@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .api import admin, cases, chat, dashboard, flagged, investigate, links, simulator, transactions
 from .config import get_settings
@@ -100,3 +103,27 @@ async def healthz() -> dict:
         "app": settings.app_name,
         "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
+
+
+# ---------------------------------------------------------------------------
+# Serve the built React frontend (single-service deployment)
+# Registered last so it never shadows /api, /healthz or "/"
+# ---------------------------------------------------------------------------
+
+_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+_SERVE_STATIC = (
+    settings.app_env == "production"
+    or (_DIST / "index.html").exists()
+)
+
+if _SERVE_STATIC and (_DIST / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def spa_fallback(full_path: str) -> FileResponse:
+    if _SERVE_STATIC and full_path.split("/")[0] != "api":
+        index = _DIST / "index.html"
+        if index.exists():
+            return FileResponse(index)
+    raise HTTPException(404, "not found")
