@@ -91,8 +91,10 @@ async def on_shutdown() -> None:
     await close_db()
 
 
-@app.get("/")
-async def root() -> dict:
+@app.get("/", response_model=None)
+async def root() -> FileResponse | dict:
+    if _SERVE_STATIC and (_DIST / "index.html").exists():
+        return FileResponse(_DIST / "index.html")
     return {"app": settings.app_name, "status": "operational", "docs": "/docs"}
 
 
