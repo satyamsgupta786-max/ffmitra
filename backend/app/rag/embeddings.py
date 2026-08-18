@@ -76,6 +76,21 @@ def _candidate_models() -> list[str]:
     return seen
 
 
+_EMBED_DEAD = {"dead": False, "since": 0.0}
+
+
+def _embedding_api_dead() -> bool:
+    if time.time() - _EMBED_DEAD["since"] > 600:
+        _EMBED_DEAD["dead"] = False
+        return False
+    return _EMBED_DEAD["dead"]
+
+
+def _embedding_mark_dead() -> None:
+    _EMBED_DEAD["dead"] = True
+    _EMBED_DEAD["since"] = time.time()
+
+
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """Embed a list of texts with a Gemini embedding model (768 dims).
 
@@ -88,6 +103,9 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 
     if not texts:
         return []
+
+    if _embedding_api_dead():
+        raise RuntimeError("Gemini embedding API unavailable (last probe failed)")
 
     cfg = get_gemini_config()
     if not cfg["api_key"]:
@@ -118,6 +136,7 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
                     _working_embedding_model = model
                     break
             else:
+                _embedding_mark_dead()
                 raise RuntimeError(
                     "No working embedding model found on this API key — "
                     "checked: " + ", ".join(_candidate_models())

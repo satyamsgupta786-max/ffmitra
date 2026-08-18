@@ -834,10 +834,24 @@ def page_analyst():
                     _gemini_status = f"❌ HTTP {_gr.status_code}"
             except Exception as _ge:
                 _gemini_status = f"network error: {str(_ge)[:60]}"
+        _qwen_key = os.getenv("QWEN_API_KEY", "")
+        _qwen_status = "not configured"
+        if _qwen_key:
+            try:
+                _qwen_url = os.getenv("QWEN_BASE_URL", "https://ai.tcetcercd.in/v1").rstrip("/")
+                _qr = _hx.get(
+                    f"{_qwen_url}/models",
+                    headers={"Authorization": f"Bearer {_qwen_key}"},
+                    timeout=15.0,
+                )
+                _qwen_status = "✅ working" if _qr.status_code == 200 else f"❌ HTTP {_qr.status_code}"
+            except Exception as _qe:
+                _qwen_status = f"network error: {str(_qe)[:60]}"
         st.markdown(
             f"- Supabase URL: {'✅ set' if _s3.supabase_url else '❌ missing'}\n"
             f"- Supabase SECRET_KEY: {'✅ set' if _s3.supabase_secret_key else '❌ missing'}\n"
-            f"- Gemini key: {'✅ set' if _s3.gemini_api_key else '❌ missing'} · **{_gemini_status}**"
+            f"- Qwen CoE gateway (primary LLM): {'✅ set' if _qwen_key else '❌ missing'} · **{_qwen_status}**\n"
+            f"- Gemini key (fallback): {'✅ set' if _s3.gemini_api_key else '❌ missing'} · **{_gemini_status}**"
         )
         st.divider()
         st.subheader("Current analysts")

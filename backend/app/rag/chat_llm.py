@@ -1,5 +1,6 @@
 """FFMitra chatbot brain: intent classification, urgency detection,
-Gemini generation with RAG context, and a deterministic fallback."""
+LLM generation (Qwen gateway first, Gemini fallback) with RAG context,
+and a deterministic fallback."""
 
 from __future__ import annotations
 
@@ -14,6 +15,17 @@ from .embeddings import get_gemini_config
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ARTIFACT_PATH = PROJECT_ROOT / "data" / "artifacts" / "faq_docs.json"
+
+QWEN_BASE_URL = os.getenv("QWEN_BASE_URL", "https://ai.tcetcercd.in/v1").rstrip("/")
+QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen3.6")
+
+
+def get_qwen_config() -> dict:
+    return {
+        "api_key": os.getenv("QWEN_API_KEY", "").strip(),
+        "base_url": os.getenv("QWEN_BASE_URL", QWEN_BASE_URL).rstrip("/"),
+        "model": os.getenv("QWEN_MODEL", QWEN_MODEL),
+    }
 
 CATEGORY_PAYMENT = "Payment / Transaction Fraud"
 CATEGORY_PHISHING = "Phishing & Social Engineering"
@@ -226,6 +238,81 @@ def _mark_quota_exhausted() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Qwen CoE gateway (OpenAI-compatible chat completions)
+# ---------------------------------------------------------------------------
+
+_QWEN_STATE = {"fails": 0, "since": 0.0}
+
+
+def _qwen_unavailable() -> bool:
+    if time.time() - _QWEN_STATE["since"] > 300:
+        _QWEN_STATE["fails"] = 0
+        return False
+    return _QWEN_STATE["fails"] >= 2
+
+
+def _mark_qwen_failure() -> None:
+    now = time.time()
+    if now - _QWEN_STATE["since"] > 300:
+        _QWEN_STATE["fails"] = 0
+        _QWEN_STATE["since"] = now
+    _QWEN_STATE["fails"] += 1
+
+
+def _call_qwen(user_message: str, history: list[dict], system_prompt: str) -> str:
+    """Chat completion via the campus Qwen gateway (OpenAI protocol)."""
+    cfg = get_qwen_config()
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    for msg in history[-6:]:
+        role = msg.get("role", "user")
+        role = "assistant" if role in ("assistant", "model", "bot") else "user"
+        content = msg.get("content") or msg.get("text") or ""
+        if content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": user_message})
+
+    last_error: Exception | None = None
+    for attempt in range(2):
+        try:
+            with httpx.Client(timeout=90.0) as client:
+                resp = client.post(
+                    f"{cfg['base_url']}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {cfg['api_key']}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": cfg["model"],
+                        "messages": messages,
+                        "max_tokens": 600,
+                        "temperature": 0.4,
+                    },
+                )
+            if resp.status_code == 200:
+                data = resp.json()
+                text = (
+                    data.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                    .strip()
+                )
+                if text:
+                    return text
+                return ""
+            last_error = RuntimeError(
+                f"qwen chat error {resp.status_code}: {resp.text[:200]}"
+            )
+            if resp.status_code in (429, 500, 502, 503, 504):
+                time.sleep(2 * (attempt + 1))
+                continue
+            raise last_error
+        except httpx.HTTPError as exc:
+            last_error = exc
+            time.sleep(2 * (attempt + 1))
+    raise RuntimeError(f"Qwen chat failed: {last_error}")
+
+
+# ---------------------------------------------------------------------------
 # Deterministic fallback
 # ---------------------------------------------------------------------------
 
@@ -310,8 +397,8 @@ def generate_reply(
     """Produce a chatbot reply for a victim message.
 
     Returns dict {reply, category, urgency, used_llm, sources}.
-    Falls back to a deterministic template when the Gemini API key is
-    missing or the call fails — never raises for network/API issues.
+    Uses the Qwen CoE gateway when configured, else Gemini; falls back to a
+    deterministic template when no LLM works — never raises for API issues.
     """
     history = history or []
     docs = _rank_docs(user_message, docs or [])
@@ -319,29 +406,27 @@ def generate_reply(
     urgency = detect_urgency(user_message)
     sources = [d.get("question", "") for d in docs if d.get("question")]
 
-    cfg = get_gemini_config()
-    if not cfg["api_key"]:
-        return {
-            "reply": _fallback_reply(user_message, category, urgency, docs),
-            "category": category,
-            "urgency": urgency,
-            "used_llm": False,
-            "sources": sources,
-        }
-
     context = "\n\n".join(
         f"[{i}] Question: {d.get('question', '')}\nAnswer: {d.get('answer', '')}"
         for i, d in enumerate(docs[:4], 1)
     )
     system_prompt = _build_system_prompt(context, urgency)
 
-    try:
-        if not _gemini_quota_exhausted():
-            reply = _call_gemini(user_message, history, system_prompt)
-        else:
+    reply = ""
+    qwen = get_qwen_config()
+    if qwen["api_key"] and not _qwen_unavailable():
+        try:
+            reply = _call_qwen(user_message, history, system_prompt)
+        except Exception:
+            _mark_qwen_failure()
             reply = ""
-    except Exception:
-        reply = ""
+    if not reply.strip():
+        gem = get_gemini_config()
+        if gem["api_key"] and not _gemini_quota_exhausted():
+            try:
+                reply = _call_gemini(user_message, history, system_prompt)
+            except Exception:
+                reply = ""
 
     if reply.strip():
         return {
