@@ -5,9 +5,10 @@ from __future__ import annotations
 import time
 import uuid
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from ..db import get_db
+from ..ratelimit import rate_limit
 from ..rag.chat_llm import (
     classify_category,
     detect_urgency,
@@ -18,6 +19,11 @@ from ..rag.chat_llm import (
 from ..schemas import ChatMessageIn, ChatSessionIn
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+# Public endpoints: per-IP rate limits protect the LLM budget and DB.
+session_limit = rate_limit(10, 60.0, "chat-session")
+message_limit = rate_limit(10, 60.0, "chat-message")
+voice_limit = rate_limit(4, 60.0, "chat-voice")
 
 CATEGORIES = [
     "Payment / Transaction Fraud",
@@ -32,7 +38,9 @@ async def categories() -> dict:
 
 
 @router.post("/session")
-async def create_session(body: ChatSessionIn) -> dict:
+async def create_session(
+    body: ChatSessionIn, _ip: str = Depends(session_limit)
+) -> dict:
     db = get_db()
     session_ref = f"SES-{uuid.uuid4().hex[:12].upper()}"
     rows = await db.insert(
@@ -49,7 +57,9 @@ async def create_session(body: ChatSessionIn) -> dict:
 
 
 @router.post("/message")
-async def send_message(body: ChatMessageIn) -> dict:
+async def send_message(
+    body: ChatMessageIn, _ip: str = Depends(message_limit)
+) -> dict:
     db = get_db()
     session = await db.get_one("chat_sessions", {"session_ref": body.session_ref})
     if not session:
@@ -125,6 +135,7 @@ async def history(session_ref: str) -> dict:
 async def voice_message(
     audio: UploadFile = File(...),
     session_ref: str = Form(...),
+    _ip: str = Depends(voice_limit),
 ) -> dict:
     """Voice victim message: transcribe with Gemini, then run the RAG reply."""
     db = get_db()
